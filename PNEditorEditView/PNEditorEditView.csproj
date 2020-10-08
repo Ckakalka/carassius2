@@ -312,9 +312,6 @@
     <Resource Include="Model\Readme.txt" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="btn-insert-handle.png" />
-  </ItemGroup>
-  <ItemGroup>
     <Resource Include="images\btn-insert-handle.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

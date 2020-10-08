@@ -194,7 +194,7 @@
                     </Button>
                     <Button Height="49" HorizontalAlignment="Left" Name="btnInsertHandle" Width="49" VerticalAlignment="Top" Click="btnInsertHandle_Click" ToolTip="Insert handle">
                         <StackPanel>
-                            <Image Source="images/btn-insert-handle.png" Height="30" Width="30" Margin="0"/>
+                            <Image Source="images/btn-insert-handle.png" Height="37" Width="37" Margin="0"/>
                         </StackPanel>
                     </Button>
                     <Button Height="49" Click="btnSetInitialState_Click" Content="Set Initial State" Visibility="Collapsed"  HorizontalAlignment="Left" Name="btnSetInitialState" Width="49" VerticalAlignment="Top" ToolTip="Set initial state">
