@@ -101,6 +101,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Model\CoverabilityTree.cs" />
     <Compile Include="Model\Node.cs" />
     <Compile Include="Model\VPetriNet.cs" />
     <Compile Include="Model\PetriNetNode.cs" />
@@ -309,6 +310,12 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Model\Readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="btn-insert-handle.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="images\btn-insert-handle.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

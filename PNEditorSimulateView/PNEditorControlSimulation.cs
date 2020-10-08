@@ -475,6 +475,7 @@ namespace PNEditorSimulateView
                 isItFirstStep = false;
             }
 
+            // позиции, в которых есть токены
             List<VPlace> initialPlaces = new List<VPlace>();
 
             foreach (VPlace place in Net.places)
@@ -482,7 +483,8 @@ namespace PNEditorSimulateView
                 int numberOfOutgoingArcs = place.ThisArcs.Count(t => place != t.To);
 
                 //todo вот здесь если токены не кружками, то будет плохо
-                if (place.TokensList.Count != 0 && numberOfOutgoingArcs != 0)
+                //if (place.TokensList.Count != 0 && numberOfOutgoingArcs != 0)
+                if (place.NumberOfTokens != 0 && numberOfOutgoingArcs != 0)
                 {
                     initialPlaces.Add(place);
                 }
@@ -492,34 +494,38 @@ namespace PNEditorSimulateView
                 }
             }
 
+            // переходы, которые могут сработать
             var outgoingTransitions = new List<VTransition>();
 
+            // проход по всем позициям, где есть токены
             foreach (var place in initialPlaces)
             {
+                // проход по всем ребрам, смежным с этой позицией
                 foreach (var arc1 in place.ThisArcs)
                 {
+                    // смотрим только на исходящие ребра
                     if (arc1.From != place) continue;
 
+                    // проход по всем ребрам перехода, в который ведет текущее ребро
+                    bool mayBeEnabled = false;
                     foreach (var arc2 in arc1.To.ThisArcs)
                     {
-                        var mayBeEnabled = true;
-
+                        mayBeEnabled = true;
+                        // смотрим только на входящие в текущий переход
                         if (arc2.To != arc1.To) continue;
 
-                        foreach (var arc in arc1.To.ThisArcs)
-                        {
-                            if (arc.To != arc1.To) continue;
-                            int numberOfRequiredTokens;
-                            int.TryParse(arc.Weight, out numberOfRequiredTokens);
-                            var numberOfExistingTokens = (arc.From as VPlace).NumberOfTokens;
+                        int numberOfRequiredTokens;
+                        int.TryParse(arc2.Weight, out numberOfRequiredTokens);
+                        var numberOfExistingTokens = (arc2.From as VPlace).NumberOfTokens;
 
-                            if (numberOfRequiredTokens <= numberOfExistingTokens) continue;
+                        if (numberOfRequiredTokens > numberOfExistingTokens)
+                        {
                             mayBeEnabled = false;
                             break;
                         }
-                        if (!outgoingTransitions.Contains(arc1.To as VTransition) && mayBeEnabled)
-                            outgoingTransitions.Add(arc1.To as VTransition);
                     }
+                    if (!outgoingTransitions.Contains(arc1.To as VTransition) && mayBeEnabled)
+                        outgoingTransitions.Add(arc1.To as VTransition);
                 }
             }
 
@@ -601,6 +607,7 @@ namespace PNEditorSimulateView
                 foreach (VArc arc in enabledTransition.ThisArcs)
                 {
                     VPlace changedPlace;
+                    // входящее ребро
                     if (arc.From != enabledTransition)
                     {
                         changedPlace = (arc.From as VPlace);
@@ -615,6 +622,7 @@ namespace PNEditorSimulateView
                         int.TryParse(arc.Weight, out delta);
                         changedPlace.NumberOfTokens -= delta;
                     }
+                    // исходящее ребро
                     else
                     {
                         changedPlace = (arc.To as VPlace);

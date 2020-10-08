@@ -15,6 +15,8 @@ using PNEditorEditView.ModelArrange;
 using PNEditorEditView.PropertyControls;
 using PNEditorEditView.Util;
 using Path = System.Windows.Shapes.Path;
+using Core.Model;
+using PNEditorEditView.Model;
 
 namespace PNEditorEditView
 {
@@ -57,6 +59,9 @@ namespace PNEditorEditView
         private const int PLACEHEIGHT = 30;
         private const int TRANSITIONWIDTH = 20;
         private const int TRANSITIONHEIGHT = 50;
+
+        private const double EPSILON = 0.00001;
+        private const double DISTANCE = 80;
 
         // main Petri-net
         public static VPetriNet Net = VPetriNet.Create();
@@ -166,6 +171,7 @@ namespace PNEditorEditView
             btnAddToken.IsEnabled = true;
             btnNonOrientedArc.IsEnabled = true;
             btnSetInitialState.IsEnabled = true;
+            btnInsertHandle.IsEnabled = true;
         }
 
         public void DisableRedoButton()
@@ -214,6 +220,14 @@ namespace PNEditorEditView
             _leftMouseButtonMode = LeftMouseButtonMode.AddToken;
             EnableAddButtons();
             btnAddToken.IsEnabled = false;
+        }
+
+        private void btnInsertHandle_Click(object sender, RoutedEventArgs e)
+        {
+            btnSelect.IsEnabled = true;
+            _leftMouseButtonMode = LeftMouseButtonMode.InsertHandle;
+            EnableAddButtons();
+            btnInsertHandle.IsEnabled = false;
         }
 
         private void btnSelect_Click(object sender, RoutedEventArgs e)
@@ -877,6 +891,12 @@ namespace PNEditorEditView
             _movingHappened = false;
             if (e.ChangedButton == MouseButton.Right)
             {
+                if (_leftMouseButtonMode == LeftMouseButtonMode.InsertHandle && _nodeFrom != null)
+                {
+                    UnselectFigures();
+                    _nodeFrom = null;
+                    return;
+                }
                 if (_leftMouseButtonMode != LeftMouseButtonMode.Select)
                 {
                     btnSelect_Click(sender, e);
@@ -1145,6 +1165,26 @@ namespace PNEditorEditView
                     e.Handled = true;
                 }
                     break;
+                case LeftMouseButtonMode.InsertHandle:
+                {
+                    // если выбираем вторую вершину
+                    if (_nodeFrom != null)
+                    {
+                        _nodeTo = GetSenderPlace(sender);
+                        _nodeTo.IsSelect = true;
+                        MakeSelected(_nodeTo);
+                        InsertHandle(_nodeFrom, _nodeTo);
+                    }
+                    // если выбираем первую вершину
+                    else
+                    {
+                        UnselectFigures();
+                        _nodeFrom = GetSenderPlace(sender);
+                        _nodeFrom.IsSelect = true;
+                        MakeSelected(_nodeFrom);
+                    }
+                }
+                    break;
             }
         }
 
@@ -1198,6 +1238,25 @@ namespace PNEditorEditView
                     }
 
                     e.Handled = true;
+                }
+                    break;
+                case LeftMouseButtonMode.InsertHandle:
+                {
+                    // если выбираем вторую вершину
+                    if (_nodeFrom != null)
+                    {
+                        _allFiguresObjectReferences.TryGetValue(sender, out _nodeTo);
+                        MakeSelected(_nodeTo);
+                        InsertHandle(_nodeFrom, _nodeTo);
+                    }
+                    // если выбираем первую вершину
+                    else
+                    {
+                         UnselectFigures();
+                        _allFiguresObjectReferences.TryGetValue(sender, out _nodeFrom);
+                        _nodeFrom.IsSelect = true;
+                        MakeSelected(_nodeFrom);
+                    }
                 }
                     break;
             }
@@ -1296,6 +1355,7 @@ namespace PNEditorEditView
             AddTransition,
             AddArc,
             AddToken,
+            InsertHandle,
             ChooseTransition,
             SetInitialState,
             AddFinalState,
@@ -1320,6 +1380,10 @@ namespace PNEditorEditView
         private double _selectingXpoint, _selectingYpoint;
 
         private PetriNetNode _tempFrom, _tempTo, _selectedFigure;
+
+        // переменные для вставки ручек
+        private PetriNetNode _nodeFrom = null;
+        private PetriNetNode _nodeTo = null;
 
         private VPlace _markedPlace;
         private VTransition _markedTransition;
@@ -1406,7 +1470,7 @@ namespace PNEditorEditView
                 }
 
                 arc.IsSelect = false;
-
+                
                 if (arc.WeightLabel != null)
                     MainModelCanvas.Children.Remove(arc.WeightLabel);
             }
@@ -1419,6 +1483,8 @@ namespace PNEditorEditView
             _leftMouseButtonMode = LeftMouseButtonMode.Delete;
             EnableAddButtons();
 
+            DeleteArcs(selectedA);
+
             if (selectedF.Count != 0)
             {
                 foreach (PetriNetNode figure in selectedF)
@@ -1427,12 +1493,11 @@ namespace PNEditorEditView
                 }
             }
 
-            DeleteArcs(selectedA);
-
             ReassignSelectedProperties();
 
             _selectedFigure = null;
             _selectedArc = null;
+            _nodeFrom = null;
             TurnOnSelectMode();
         }
 
@@ -1584,6 +1649,244 @@ namespace PNEditorEditView
         private void AddTransition(double coordX, double coordY)
         {
             AddFigure(coordX, coordY, new Rectangle());
+        }
+
+        private void InsertHandle(PetriNetNode first_node, PetriNetNode last_node)
+        {
+            UnselectFigures();
+
+            // PP or TT handle
+            if (first_node is VPlace && last_node is VPlace
+                || first_node is VTransition && last_node is VTransition)
+            {
+                insert_PP_or_TT_Handle(first_node, last_node);
+            }
+            else
+            {
+                // TP handle
+                if (first_node is VTransition && last_node is VPlace)
+                {
+                    bool boundedness = true;
+                    CoverabilityTree.Create(Net, ref boundedness);
+                    if (boundedness)
+                    {
+                        List<PetriNetNode> handle = add_TP_HandleToModel(first_node, last_node);
+                        CoverabilityTree.Create(Net, ref boundedness);
+                        remove_TP_HandleFromModel(first_node, last_node, handle);
+                        if (boundedness)
+                            insert_TP_or_PT_Handle(first_node, last_node);
+                        else
+                        {
+                            MessageBoxResult result = MessageBox.Show("Inserting a handle will result in unboundedness net. Insert anyway?",
+                                "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                            if (result == MessageBoxResult.Yes)
+                                insert_TP_or_PT_Handle(first_node, last_node);
+                        }
+                    }
+                    else
+                        insert_TP_or_PT_Handle(first_node, last_node);
+                    CoverabilityTree.Log += boundedness;
+                }
+                // PT handle
+                else
+                {
+                    // TODO
+                    insert_TP_or_PT_Handle(first_node, last_node);
+                }
+            }
+
+            StreamWriter writer = new StreamWriter("C:\\Users\\User\\Documents\\2 course\\Курсовая работа\\temp.txt");
+            writer.WriteLine(CoverabilityTree.Log);
+            writer.Close();
+
+            _nodeFrom = null;
+            _nodeTo = null;
+        }
+
+        private List<PetriNetNode> add_TP_HandleToModel(PetriNetNode first_node, PetriNetNode last_node)
+        {
+            List<PetriNetNode> handle = new List<PetriNetNode>();
+            VPlace place = new VPlace(0, 0, 0, "");
+            Net.places.Add(place);
+            VTransition transition = new VTransition(0, 0, "");
+            Net.transitions.Add(transition);
+            handle.Add(place);
+            handle.Add(transition);
+
+            addArcsToModel(first_node, place);
+            addArcsToModel(place, transition);
+            addArcsToModel(transition, last_node);
+
+            return handle;
+        }
+
+        private void remove_TP_HandleFromModel(PetriNetNode first_node, PetriNetNode last_node, List<PetriNetNode> handle)
+        {
+            Net.places.RemoveAt(Net.places.Count - 1);
+            Net.transitions.RemoveAt(Net.transitions.Count - 1);
+            Net.arcs.RemoveAt(Net.arcs.Count - 1);
+            first_node.ThisArcs.RemoveAt(first_node.ThisArcs.Count - 1);
+            last_node.ThisArcs.RemoveAt(last_node.ThisArcs.Count - 1);
+            foreach (PetriNetNode node in handle)
+            {
+                Net.arcs.RemoveAt(Net.arcs.Count - 1);
+                node.ThisArcs.RemoveAt(node.ThisArcs.Count - 1);
+                node.ThisArcs.RemoveAt(node.ThisArcs.Count - 1);
+            }
+        }
+
+        private void addArcsToModel(PetriNetNode from, PetriNetNode to)
+        {
+            VArc newArc = new VArc(from, to);
+            Net.arcs.Add(newArc);
+            from.ThisArcs.Add(newArc);
+            to.ThisArcs.Add(newArc);
+        }
+
+        private void insert_PP_or_TT_Handle(PetriNetNode first_node, PetriNetNode last_node)
+        {
+            List<Shape> shapes = new List<Shape>();
+            int sign_delta_x, sign_delta_y;
+            double normal_k;
+            double sqr_delta_x, sqr_delta_y;
+            calcCoefficients(first_node, last_node, out sign_delta_x, out sign_delta_y, out normal_k, out sqr_delta_x, out sqr_delta_y);
+            double middle_x = (first_node.CoordX + last_node.CoordX) / 2 + PLACEWIDTH / 2;
+            double middle_y = (first_node.CoordY + last_node.CoordY) / 2 + PLACEHEIGHT / 2;
+            // PP handle
+            if (first_node is VPlace && last_node is VPlace)
+                shapes.Add(new Rectangle());
+            // TT handle
+            else
+                shapes.Add(new Ellipse());
+
+            if (sign_delta_x == 0 && sign_delta_y == 0)
+            {
+                AddFigure(middle_x + DISTANCE, middle_y + DISTANCE, shapes[0]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            if (sign_delta_y == 0)
+            {
+                AddFigure(middle_x, middle_y + sign_delta_x * DISTANCE, shapes[0]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            else if (sign_delta_x == 0)
+            {
+                AddFigure(middle_x + sign_delta_y * DISTANCE, middle_y, shapes[0]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            AddFigure(middle_x + sign_delta_y * Math.Sqrt(sqr_delta_x),
+                middle_y + sign_delta_x * Math.Sqrt(sqr_delta_y), shapes[0]);
+            LinkAndSelectNodes(first_node, last_node, shapes);
+        }
+
+        private void insert_TP_or_PT_Handle(PetriNetNode first_node, PetriNetNode last_node)
+        {
+            List<Shape> shapes = new List<Shape>();
+            int sign_delta_x, sign_delta_y;
+            double normal_k;
+            double sqr_delta_x, sqr_delta_y;
+            calcCoefficients(first_node, last_node, out sign_delta_x, out sign_delta_y, out normal_k, out sqr_delta_x, out sqr_delta_y);
+
+            // TP handle
+            if (first_node is VTransition && last_node is VPlace)
+            {
+                shapes.Add(new Ellipse());
+                shapes.Add(new Rectangle());
+            }
+            // PT handle
+            else
+            {
+                shapes.Add(new Rectangle());
+                shapes.Add(new Ellipse());
+            }
+
+            if (sign_delta_x == 0 && sign_delta_y == 0)
+            {
+                AddFigure(first_node.CoordX + PLACEWIDTH / 2 + DISTANCE,
+                    first_node.CoordY + PLACEHEIGHT / 2 + DISTANCE, shapes[0]);
+                AddFigure(last_node.CoordX + PLACEWIDTH / 2 + DISTANCE,
+                    last_node.CoordY + PLACEHEIGHT / 2 + DISTANCE, shapes[1]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            if (sign_delta_y == 0)
+            {
+                AddFigure(first_node.CoordX + PLACEWIDTH / 2,
+                    first_node.CoordY + PLACEHEIGHT / 2 + sign_delta_x * DISTANCE, shapes[0]);
+                AddFigure(last_node.CoordX + PLACEWIDTH / 2,
+                    last_node.CoordY + PLACEHEIGHT / 2 + sign_delta_x * DISTANCE, shapes[1]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            else if (sign_delta_x == 0)
+            {
+                AddFigure(first_node.CoordX + PLACEWIDTH / 2 + sign_delta_y * DISTANCE,
+                    first_node.CoordY + PLACEHEIGHT / 2, shapes[0]);
+                AddFigure(last_node.CoordX + PLACEWIDTH / 2 + sign_delta_y * DISTANCE,
+                    last_node.CoordY + PLACEHEIGHT / 2, shapes[1]);
+                LinkAndSelectNodes(first_node, last_node, shapes);
+                return;
+            }
+            AddFigure(first_node.CoordX + PLACEWIDTH / 2 + sign_delta_y * Math.Sqrt(sqr_delta_x),
+                first_node.CoordY + PLACEHEIGHT / 2 + sign_delta_x * Math.Sqrt(sqr_delta_y), shapes[0]);
+            AddFigure(last_node.CoordX + PLACEWIDTH / 2 + sign_delta_y * Math.Sqrt(sqr_delta_x),
+                last_node.CoordY + PLACEHEIGHT / 2 + sign_delta_x * Math.Sqrt(sqr_delta_y), shapes[1]);
+            LinkAndSelectNodes(first_node, last_node, shapes);
+        }
+
+        private void calcCoefficients(PetriNetNode first_node, PetriNetNode last_node, out int sign_delta_x,
+                 out int sign_delta_y, out double normal_k, out double sqr_delta_x, out double sqr_delta_y)
+        {
+            sign_delta_x = getSign(first_node.CoordX - last_node.CoordX);
+            sign_delta_y = getSign(last_node.CoordY - first_node.CoordY);
+            // y = kx + b_1 уравнение прямой, задаваемой 2 вершинами
+            // y = normal_k * x + b_2 уравнение прямой, перпендикулярной предыдущей
+            normal_k = -(last_node.CoordX - first_node.CoordX) / (last_node.CoordY - first_node.CoordY);
+            normal_k *= normal_k;
+            sqr_delta_x = DISTANCE * DISTANCE / (1 + normal_k);
+            sqr_delta_y = sqr_delta_x * normal_k;
+        }
+
+        private void LinkAndSelectNodes(PetriNetNode first_node, PetriNetNode last_node, List<Shape> shapes)
+        {
+            PetriNetNode previous_node, current_node;
+            _allFiguresObjectReferences.TryGetValue(shapes[0], out current_node);
+            btnAddArc.IsEnabled = false;
+            VArc temp_arc = AddArc(first_node, current_node);
+            temp_arc.IsSelect = true;
+            _selectedArcs.Add(temp_arc);
+            ColorArrow(temp_arc);
+            for (int i = 1; i < shapes.Count; ++i)
+            {
+                _allFiguresObjectReferences.TryGetValue(shapes[i - 1], out previous_node);
+                _allFiguresObjectReferences.TryGetValue(shapes[i], out current_node);
+                previous_node.IsSelect = true;
+                MakeSelected(previous_node);
+                temp_arc = AddArc(previous_node, current_node);
+                temp_arc.IsSelect = true;
+                _selectedArcs.Add(temp_arc);
+                ColorArrow(temp_arc);
+            }
+            current_node.IsSelect = true;
+            MakeSelected(current_node);
+            temp_arc = AddArc(current_node, last_node);
+            temp_arc.IsSelect = true;
+            _selectedArcs.Add(temp_arc);
+            ColorArrow(temp_arc);
+            btnAddArc.IsEnabled = true;
+            ReassignSelectedProperties();
+        }
+
+        private int getSign(double value)
+        {
+            if (Math.Abs(value) < EPSILON)
+                return 0;
+            if(value < 0)
+                return -1;
+            return 1;
         }
 
         public void PlaceNodeInTheNearestMesh(double coordX, double coordY, string figure, out double x, out double y)
