@@ -1685,7 +1685,6 @@ namespace PNEditorEditView
                     }
                     else
                         insert_TP_or_PT_Handle(first_node, last_node);
-                    CoverabilityTree.Log += boundedness;
                 }
                 // PT handle
                 else
@@ -1695,9 +1694,8 @@ namespace PNEditorEditView
                 }
             }
 
-            StreamWriter writer = new StreamWriter("C:\\Users\\User\\Documents\\2 course\\Курсовая работа\\temp.txt");
-            writer.WriteLine(CoverabilityTree.Log);
-            writer.Close();
+            //CoverabilityTree.writer.Flush();
+            //CoverabilityTree.writer.Close();
 
             _nodeFrom = null;
             _nodeTo = null;

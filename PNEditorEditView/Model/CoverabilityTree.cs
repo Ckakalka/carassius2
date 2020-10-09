@@ -3,7 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.Remoting.Messaging;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,18 +15,27 @@ namespace PNEditorEditView.Model
 {
     class CoverabilityTree
     {
-        private CoverabilityTree(Dictionary<PetriNetNode, int> marking, VTransition firedTransition, CoverabilityTree parent)
+        public CoverabilityTree(Dictionary<PetriNetNode, int> marking, VTransition firedTransition, CoverabilityTree parent)
         {
             this.marking = marking;
             this.firedTransition = firedTransition;
             this.parent = parent;
         }
+
+        // дерево покрытия строится до нахождения первой "бесконечности"
         public static CoverabilityTree Create(VPetriNet net, ref bool boundness)
         {
+            nodes = new HashSet<CoverabilityTree>();
             Dictionary<PetriNetNode, int> marking = new Dictionary<PetriNetNode, int>();
             foreach(VPlace place in net.places)
                 marking.Add(place, place.NumberOfTokens);
             CoverabilityTree root = new CoverabilityTree(marking, null, null);
+            nodes.Add(root);
+            //writer.Write("start ");
+            //foreach (var place in marking)
+            //    writer.Write($"{place.Value} ");
+            //writer.Write("\n");
+            boundness = true;
             root.constructCoverabilityTree(net, ref boundness);
             return root;
         }
@@ -68,12 +79,13 @@ namespace PNEditorEditView.Model
                         }
                         // если исходящее
                         else if (nextMarking[tempArc.To] != int.MaxValue)
-                                nextMarking[tempArc.To] += weight;
+                            nextMarking[tempArc.To] += weight;
                     }
                     CoverabilityTree tmp = this;
                     bool isFoundCover = false;
                     bool isFoundEqual = false;
                     int signСomparisonMarking;
+                    // смотрим вверх до корня, покрываем ли какую-нибудь маркировку?
                     while (!(isFoundCover || isFoundEqual || tmp == null))
                     {
                         signСomparisonMarking = compareMarking(nextMarking, tmp.marking, net);
@@ -87,15 +99,24 @@ namespace PNEditorEditView.Model
                             isFoundEqual = true;
                         tmp = tmp.parent;
                     }
-                    if(children == null)
+                    if (children == null)
                         children = new List<CoverabilityTree>();
                     CoverabilityTree child = new CoverabilityTree(nextMarking, tempTransition, this);
                     children.Add(child);
-                    foreach(var place in nextMarking)
-                        Log += $"value: {place.Value} ";
-                    Log += $"{child.firedTransition.Id}\n";
-                    if (!isFoundEqual)
-                        child.constructCoverabilityTree(net, ref boundness);
+
+                    if (!(isFoundEqual || !boundness))
+                        if (!nodes.Contains(child))
+                        {
+                            //foreach (var place in net.places)
+                            //    writer.Write($"{nextMarking[place]} ");
+                            //writer.Write($"{child.firedTransition.Id}\n");
+                            nodes.Add(child);
+                            child.constructCoverabilityTree(net, ref boundness);
+                        }
+                    //writer.WriteLine("Go up");
+                    //foreach (var place in net.places)
+                    //    writer.Write($"{nextMarking[place]} ");
+                    //writer.Write($"{child.firedTransition.Id}\n");
                 }
             }
         }
@@ -122,7 +143,32 @@ namespace PNEditorEditView.Model
                 if (first[currentPlace] > second[currentPlace])
                     first[currentPlace] = int.MaxValue;
         }
-        public static string Log = "";
+
+        public override bool Equals(object obj)
+        {
+            CoverabilityTree tree = obj as CoverabilityTree;
+            if (tree == null)
+                return false;
+
+            foreach(var tmp in this.marking)
+            {
+                if(!tree.marking.ContainsKey(tmp.Key) || tree.marking[tmp.Key] != tmp.Value)
+                    return false;
+            }
+            return true;
+        }
+
+        // скорее всего плохая хеш-функция (много коллизий)
+        public override int GetHashCode()
+        {
+            int hash = 0;
+            foreach(var tmp in marking)
+                hash ^= tmp.Value.GetHashCode();
+            return hash;
+        }
+
+        // public static StreamWriter writer = new StreamWriter("C:\\Users\\User\\Documents\\2 course\\Курсовая работа\\temp.txt");
+        static HashSet<CoverabilityTree> nodes;
         List<CoverabilityTree> children;
         CoverabilityTree parent;
         VTransition firedTransition;
