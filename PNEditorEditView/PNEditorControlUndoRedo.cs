@@ -208,7 +208,6 @@ namespace PNEditorEditView
                 Command.ExecutedCommands.Pop();
                 Command.CanceledCommands.Push(lastCommand);
             } 
-            // команда undo для вставки ручки 
 
             ReassignSelectedProperties();
             EnableUndoRedoButtons();
