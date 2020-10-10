@@ -125,7 +125,6 @@
       <DependentUpon>NumberOfTokensProperty.xaml</DependentUpon>
     </Compile>
     <Compile Include="PropertyControls\PropertyEditorBase.cs" />
-    <Compile Include="Util\GraphUtil.cs" />
     <Compile Include="Util\MathUtil.cs" />
     <Compile Include="Util\ModelUtil.cs" />
     <Compile Include="Util\VisUtil.cs" />

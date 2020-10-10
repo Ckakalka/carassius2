@@ -1658,27 +1658,26 @@ namespace PNEditorEditView
             if (first_node is VPlace && last_node is VPlace
                 || first_node is VTransition && last_node is VTransition)
             {
-                List<PetriNetNode> requiredNodes = new List<PetriNetNode>();
-                requiredNodes.Add(first_node);
-                requiredNodes.Add(last_node);
-                GraphUtil.Prepare(Net, requiredNodes);
-                bool isCanInsert = false;
-                GraphUtil.DepthFirstSearchForCycles(first_node, ref isCanInsert);
-                if (!isCanInsert)
+                // PP handle
+                if (first_node is VPlace && last_node is VPlace)
                 {
-                    MessageBoxResult result = MessageBox.Show("Inserting a handle can lead to unboundedness or non-liveness of net.\nInsert anyway?",
-                        "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (result == MessageBoxResult.Yes)
+                    // ручка сама в себя
+                    if (first_node == last_node)
                         insert_PP_or_TT_Handle(first_node, last_node);
-                }
-                // первый этап проверки пройден
+                    else
+                    {
+                        MessageBoxResult result = MessageBox.Show("Inserting a handle can lead to unboundedness or non-liveness of net.\nInsert anyway?",
+                            "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        if (result == MessageBoxResult.Yes)
+                            insert_PP_or_TT_Handle(first_node, last_node);
+                    }
+                }    
+                // TT handle
                 else
                 {
-                    // PP handle
-                    if (first_node is VPlace && last_node is VPlace)
-                        // для PP 1 этапа достаточно
+                    // ручка сама в себя
+                    if (first_node == last_node)
                         insert_PP_or_TT_Handle(first_node, last_node);
-                    // TT handle
                     else
                     {
                         List<PetriNetNode> handle = add_TT_HandleToModel(first_node, last_node);
@@ -1697,7 +1696,6 @@ namespace PNEditorEditView
                         }
                     }
                 }
-
             }
             // TP or PT handle
             else
@@ -1735,9 +1733,6 @@ namespace PNEditorEditView
                         insert_TP_or_PT_Handle(first_node, last_node);
                 }
             }
-            //CoverabilityTree.writer.Flush();
-            //CoverabilityTree.writer.Close();
-
             _nodeFrom = null;
             _nodeTo = null;
         }
@@ -1820,15 +1815,44 @@ namespace PNEditorEditView
             double middle_y = (first_node.CoordY + last_node.CoordY) / 2 + PLACEHEIGHT / 2;
             // PP handle
             if (first_node is VPlace && last_node is VPlace)
-                shapes.Add(new Rectangle());
-
+            {
+                if (first_node == last_node)
+                {
+                    shapes.Add(new Rectangle());
+                    shapes.Add(new Ellipse());
+                    shapes.Add(new Rectangle());
+                }
+                else
+                    shapes.Add(new Rectangle());
+            }
             // TT handle
             else
-                shapes.Add(new Ellipse());
-
+            {
+                if (first_node == last_node)
+                {
+                    shapes.Add(new Ellipse());
+                    shapes.Add(new Rectangle());
+                    shapes.Add(new Ellipse());
+                }
+                else
+                    shapes.Add(new Ellipse());
+            }
             if (sign_delta_x == 0 && sign_delta_y == 0)
             {
-                AddFigure(middle_x + DISTANCE, middle_y + DISTANCE, shapes[0]);
+                if (first_node == last_node)
+                {
+                    AddFigure(middle_x + DISTANCE * Math.Sqrt(2), middle_y + DISTANCE * Math.Sqrt(2), shapes[0]);
+                    AddFigure(middle_x, middle_y + DISTANCE, shapes[1]);
+                    AddFigure(middle_x - DISTANCE * Math.Sqrt(2), middle_y + DISTANCE * Math.Sqrt(2), shapes[2]);
+                    if(first_node is VTransition)
+                    {
+                        PetriNetNode place;
+                        _allFiguresObjectReferences.TryGetValue(shapes[0], out place);
+                        (place as VPlace).NumberOfTokens = 1;
+                    }
+                }
+                else
+                    AddFigure(middle_x + DISTANCE, middle_y + DISTANCE, shapes[0]);
                 LinkAndSelectNodes(first_node, last_node, shapes);
                 return;
             }

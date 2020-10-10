@@ -23,7 +23,7 @@ namespace PNEditorEditView.Model
         }
 
         // дерево покрытия строится до нахождения первой "бесконечности"
-        // или до срабатывания перехода checkableTransition (передает null чтобы игнорировать это условие)
+        // или до срабатывания перехода checkableTransition (можно передать null, чтобы игнорировать это условие)
         public static CoverabilityTree Create(VPetriNet net, VTransition checkableTransition,
                                                  ref bool boundness, ref bool isTransitionLive1)
         {
@@ -33,10 +33,6 @@ namespace PNEditorEditView.Model
                 marking.Add(place, place.NumberOfTokens);
             CoverabilityTree root = new CoverabilityTree(marking, null, null);
             nodes.Add(root);
-            //writer.Write("start ");
-            //foreach (var place in marking)
-            //    writer.Write($"{place.Value} ");
-            //writer.Write("\n");
             boundness = true;
             isTransitionLive1 = false;
             root.constructCoverabilityTree(net, checkableTransition, ref boundness, ref isTransitionLive1);
@@ -119,16 +115,9 @@ namespace PNEditorEditView.Model
                     if (!(isFoundEqual || !boundness))
                         if (!nodes.Contains(child))
                         {
-                            //foreach (var place in net.places)
-                            //    writer.Write($"{nextMarking[place]} ");
-                            //writer.Write($"{child.firedTransition.Id}\n");
                             nodes.Add(child);
                             child.constructCoverabilityTree(net, checkableTransition, ref boundness, ref isTransitionLive1);
                         }
-                    //writer.WriteLine("Go up");
-                    //foreach (var place in net.places)
-                    //    writer.Write($"{nextMarking[place]} ");
-                    //writer.Write($"{child.firedTransition.Id}\n");
                 }
             }
         }
@@ -178,8 +167,6 @@ namespace PNEditorEditView.Model
                 hash ^= tmp.Value.GetHashCode();
             return hash;
         }
-
-        // public static StreamWriter writer = new StreamWriter("C:\\Users\\User\\Documents\\2 course\\Курсовая работа\\temp.txt");
         static HashSet<CoverabilityTree> nodes;
         List<CoverabilityTree> children;
         CoverabilityTree parent;
