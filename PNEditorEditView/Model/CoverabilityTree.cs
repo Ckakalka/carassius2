@@ -23,7 +23,9 @@ namespace PNEditorEditView.Model
         }
 
         // дерево покрытия строится до нахождения первой "бесконечности"
-        public static CoverabilityTree Create(VPetriNet net, ref bool boundness)
+        // или до срабатывания перехода checkableTransition (передает null чтобы игнорировать это условие)
+        public static CoverabilityTree Create(VPetriNet net, VTransition checkableTransition,
+                                                 ref bool boundness, ref bool isTransitionLive1)
         {
             nodes = new HashSet<CoverabilityTree>();
             Dictionary<PetriNetNode, int> marking = new Dictionary<PetriNetNode, int>();
@@ -36,15 +38,19 @@ namespace PNEditorEditView.Model
             //    writer.Write($"{place.Value} ");
             //writer.Write("\n");
             boundness = true;
-            root.constructCoverabilityTree(net, ref boundness);
+            isTransitionLive1 = false;
+            root.constructCoverabilityTree(net, checkableTransition, ref boundness, ref isTransitionLive1);
             return root;
         }
 
-        void constructCoverabilityTree(VPetriNet net, ref bool boundness)
+        void constructCoverabilityTree(VPetriNet net, VTransition checkableTransition,
+                                                 ref bool boundness, ref bool isTransitionLive1)
         {
             // проход по всем переходам
             foreach (VTransition tempTransition in net.transitions)
             {
+                if (!boundness || isTransitionLive1)
+                    return;
                 bool mayBeFired = false;
                 // проход по ребрам перехода
                 foreach(VArc tempArc in tempTransition.ThisArcs)
@@ -65,6 +71,12 @@ namespace PNEditorEditView.Model
                 // если переход может сработать
                 if (mayBeFired)
                 {
+                    // если переход равен искомому
+                    if (tempTransition == checkableTransition)
+                    {
+                        isTransitionLive1 = true;
+                        return;
+                    }
                     Dictionary<PetriNetNode, int> nextMarking = new Dictionary<PetriNetNode, int>(marking);
                     // проход по ребрам перехода
                     foreach (VArc tempArc in tempTransition.ThisArcs)
@@ -111,7 +123,7 @@ namespace PNEditorEditView.Model
                             //    writer.Write($"{nextMarking[place]} ");
                             //writer.Write($"{child.firedTransition.Id}\n");
                             nodes.Add(child);
-                            child.constructCoverabilityTree(net, ref boundness);
+                            child.constructCoverabilityTree(net, checkableTransition, ref boundness, ref isTransitionLive1);
                         }
                     //writer.WriteLine("Go up");
                     //foreach (var place in net.places)

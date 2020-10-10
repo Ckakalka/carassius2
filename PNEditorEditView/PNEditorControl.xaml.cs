@@ -1654,30 +1654,70 @@ namespace PNEditorEditView
         private void InsertHandle(PetriNetNode first_node, PetriNetNode last_node)
         {
             UnselectFigures();
-
             // PP or TT handle
             if (first_node is VPlace && last_node is VPlace
                 || first_node is VTransition && last_node is VTransition)
             {
-                insert_PP_or_TT_Handle(first_node, last_node);
+                List<PetriNetNode> requiredNodes = new List<PetriNetNode>();
+                requiredNodes.Add(first_node);
+                requiredNodes.Add(last_node);
+                GraphUtil.Prepare(Net, requiredNodes);
+                bool isCanInsert = false;
+                GraphUtil.DepthFirstSearchForCycles(first_node, ref isCanInsert);
+                if (!isCanInsert)
+                {
+                    MessageBoxResult result = MessageBox.Show("Inserting a handle can lead to unboundedness or non-liveness of net.\nInsert anyway?",
+                        "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (result == MessageBoxResult.Yes)
+                        insert_PP_or_TT_Handle(first_node, last_node);
+                }
+                // первый этап проверки пройден
+                else
+                {
+                    // PP handle
+                    if (first_node is VPlace && last_node is VPlace)
+                        // для PP 1 этапа достаточно
+                        insert_PP_or_TT_Handle(first_node, last_node);
+                    // TT handle
+                    else
+                    {
+                        List<PetriNetNode> handle = add_TT_HandleToModel(first_node, last_node);
+                        bool boundedness = true;
+                        bool isTransitionLive1 = false;
+                        CoverabilityTree.Create(Net, first_node as VTransition, ref boundedness, ref isTransitionLive1);
+                        remove_TT_HandleFromModel(first_node, last_node, handle);
+                        if (isTransitionLive1)
+                            insert_PP_or_TT_Handle(first_node, last_node);
+                        else
+                        {
+                            MessageBoxResult result = MessageBox.Show("Inserting a handle can lead to unboundedness or non-liveness of net.\nInsert anyway?",
+                                "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                            if (result == MessageBoxResult.Yes)
+                                insert_PP_or_TT_Handle(first_node, last_node);
+                        }
+                    }
+                }
+
             }
+            // TP or PT handle
             else
             {
                 // TP handle
                 if (first_node is VTransition && last_node is VPlace)
                 {
                     bool boundedness = true;
-                    CoverabilityTree.Create(Net, ref boundedness);
+                    bool isTranstionLive1 = true;
+                    CoverabilityTree.Create(Net, null, ref boundedness, ref isTranstionLive1);
                     if (boundedness)
                     {
                         List<PetriNetNode> handle = add_TP_HandleToModel(first_node, last_node);
-                        CoverabilityTree.Create(Net, ref boundedness);
+                        CoverabilityTree.Create(Net, null, ref boundedness, ref isTranstionLive1);
                         remove_TP_HandleFromModel(first_node, last_node, handle);
                         if (boundedness)
                             insert_TP_or_PT_Handle(first_node, last_node);
                         else
                         {
-                            MessageBoxResult result = MessageBox.Show("Inserting a handle will result in unboundedness net. Insert anyway?",
+                            MessageBoxResult result = MessageBox.Show("Inserting a handle will result in unboundedness net.\nInsert anyway?",
                                 "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                             if (result == MessageBoxResult.Yes)
                                 insert_TP_or_PT_Handle(first_node, last_node);
@@ -1689,11 +1729,12 @@ namespace PNEditorEditView
                 // PT handle
                 else
                 {
-                    // TODO
-                    insert_TP_or_PT_Handle(first_node, last_node);
+                    MessageBoxResult result = MessageBox.Show("Inserting a handle can lead to unboundedness or non-liveness of net.\nInsert anyway?",
+                        "Attention", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (result == MessageBoxResult.Yes)
+                        insert_TP_or_PT_Handle(first_node, last_node);
                 }
             }
-
             //CoverabilityTree.writer.Flush();
             //CoverabilityTree.writer.Close();
 
@@ -1716,6 +1757,33 @@ namespace PNEditorEditView
             addArcsToModel(transition, last_node);
 
             return handle;
+        }
+
+        private List<PetriNetNode> add_TT_HandleToModel(PetriNetNode first_node, PetriNetNode last_node)
+        {
+            List<PetriNetNode> handle = new List<PetriNetNode>();
+            VPlace place = new VPlace(0, 0, 0, "");
+            Net.places.Add(place);
+            handle.Add(place);
+
+            addArcsToModel(first_node, place);
+            addArcsToModel(place, last_node);
+
+            return handle;
+        }
+
+        private void remove_TT_HandleFromModel(PetriNetNode first_node, PetriNetNode last_node, List<PetriNetNode> handle)
+        {
+            Net.places.RemoveAt(Net.places.Count - 1);
+            Net.arcs.RemoveAt(Net.arcs.Count - 1);
+            first_node.ThisArcs.RemoveAt(first_node.ThisArcs.Count - 1);
+            last_node.ThisArcs.RemoveAt(last_node.ThisArcs.Count - 1);
+            foreach (PetriNetNode node in handle)
+            {
+                Net.arcs.RemoveAt(Net.arcs.Count - 1);
+                node.ThisArcs.RemoveAt(node.ThisArcs.Count - 1);
+                node.ThisArcs.RemoveAt(node.ThisArcs.Count - 1);
+            }
         }
 
         private void remove_TP_HandleFromModel(PetriNetNode first_node, PetriNetNode last_node, List<PetriNetNode> handle)
@@ -1753,6 +1821,7 @@ namespace PNEditorEditView
             // PP handle
             if (first_node is VPlace && last_node is VPlace)
                 shapes.Add(new Rectangle());
+
             // TT handle
             else
                 shapes.Add(new Ellipse());
